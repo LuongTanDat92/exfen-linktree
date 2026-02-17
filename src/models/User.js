@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from "@/libs/mongoose-lite";
 
 const { Schema } = mongoose;
 
