@@ -1,102 +1,175 @@
-import {authOptions} from "@/app/api/auth/[...nextauth]/route";
-import Chart from "@/components/Chart";
-import SectionBox from "@/components/layout/SectionBox";
-import {Event} from "@/models/Event";
-import {Page} from "@/models/Page";
-import {faLink} from "@fortawesome/free-solid-svg-icons";
-import {FontAwesomeIcon} from "@fortawesome/react-fontawesome";
-import {differenceInDays, formatISO9075, isToday} from "date-fns";
-import mongoose from "mongoose";
-import {getServerSession} from "next-auth";
-import {redirect} from "next/navigation";
-import {CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis} from "recharts";
+import connectDB from "@/libs/mongodb";
+import Page from "@/models/Page";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import AnalyticsClient from "./AnalyticsClient";
 
+export default async function PageAnalytics() {
+  await connectDB();
 
-export default async function AnalyticsPage() {
-  mongoose.connect(process.env.MONGO_URI);
   const session = await getServerSession(authOptions);
-  if (!session) {
-    return redirect('/');
-  }
-  const page = await Page.findOne({owner: session.user.email});
+  if (!session) return null;
 
-  const groupedViews = await Event.aggregate([
-    {
-      $match: {
-        type: 'view',
-        uri: page.uri,
-      }
-    },
-    {
-      $group: {
-        _id: {
-          $dateToString: {
-            date: "$createdAt",
-            format: "%Y-%m-%d"
-          },
-        },
-        count: {
-          "$count": {},
-        }
-      },
-    },
-    {
-      $sort: {_id: 1}
-    }
-  ]);
+  const page = await Page.findOne({
+    owner: session.user.email,
+  }).lean();
 
-  const clicks = await Event.find({
-    page: page.uri,
-    type: 'click',
-  });
+  if (!page) return <div>No page</div>;
 
-  return (
-    <div>
-      <SectionBox>
-        <h2 className="text-xl mb-6 text-center">Views</h2>
-        <Chart data={groupedViews.map(o => ({
-          'date': o._id,
-          'views': o.count,
-        }))} />
-      </SectionBox>
-      <SectionBox>
-        <h2 className="text-xl mb-6 text-center">Clicks</h2>
-        {page.links.map(link => (
-          <div key={link.title} className="md:flex gap-4 items-center border-t border-gray-200 py-4">
-            <div className="text-blue-500 pl-4">
-              <FontAwesomeIcon icon={faLink} />
-            </div>
-            <div className="grow">
-              <h3>{link.title || 'no title'}</h3>
-              <p className="text-gray-700 text-sm">{link.subtitle || 'no description'}</p>
-              <a className="text-xs text-blue-400" target="_blank" href="link.url">{link.url}</a>
-            </div>
-            <div className="text-center">
-              <div className="border rounded-md p-2 mt-1 md:mt-0">
-                <div className="text-3xl">
-                  {
-                    clicks
-                      .filter(
-                        c => c.uri === link.url
-                          && isToday(c.createdAt)
-                      )
-                      .length
-                  }
-                </div>
-                <div className="text-gray-400 text-xs uppercase font-bold">clicks today</div>
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="border rounded-md p-2 mt-1 md:mt-0">
-                <div className="text-3xl">
-                  {clicks.filter(c => c.uri === link.url).length}
-                </div>
-                <div className="text-gray-400 text-xs uppercase font-bold">clicks total</div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </SectionBox>
-    </div>
-  );
+  return <AnalyticsClient pageId={page._id.toString()} />;
 }
+
+// import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+// import Page from "@/models/Page";
+// import Event from "@/models/Event";
+// import connectDB from "@/libs/mongodb";
+// import { getServerSession } from "next-auth";
+// import { redirect } from "next/navigation";
+// import { formatISO9075, subDays, addDays } from "date-fns";
+
+// import TrackButtonClick from "@/components/analytics/TrackButtonClick";
+
+// import AnalyticsClient from "./AnalyticsClient";
+
+// export default async function AnalyticsPage({ searchParams }) {
+//   await connectDB();
+
+//   const session = await getServerSession(authOptions);
+//   if (!session) redirect("/");
+
+//   const page = await Page.findOne({ owner: session.user.email });
+//   if (!page) redirect("/");
+
+//   /* ===== RANGE ===== */
+//   const DAYS = Number(searchParams?.days) || 14;
+//   const endDate = new Date();
+//   const startDate = subDays(endDate, DAYS - 1);
+
+//   /* ===== PAGE VIEWS ===== */
+//   const rawViews = await Event.aggregate([
+//     {
+//       $match: {
+//         type: "page_view",
+//         uri: page.uri,
+//         createdAt: { $gte: startDate, $lte: endDate },
+//       },
+//     },
+//     {
+//       $group: {
+//         _id: {
+//           $dateToString: {
+//             date: "$createdAt",
+//             format: "%Y-%m-%d",
+//           },
+//         },
+//         count: { $sum: 1 },
+//       },
+//     },
+//   ]);
+
+//   const viewMap = Object.fromEntries(rawViews.map((v) => [v._id, v.count]));
+
+//   /* ===== CLICKS ===== */
+//   const rawClicks = await Event.aggregate([
+//     {
+//       $match: {
+//         type: "link_click",
+//         page: page._id,
+//         createdAt: { $gte: startDate, $lte: endDate },
+//       },
+//     },
+//     {
+//       $group: {
+//         _id: {
+//           $dateToString: {
+//             date: "$createdAt",
+//             format: "%Y-%m-%d",
+//           },
+//         },
+//         count: { $sum: 1 },
+//       },
+//     },
+//   ]);
+
+//   const clickMap = Object.fromEntries(rawClicks.map((c) => [c._id, c.count]));
+
+//   /* ===== BUTTONS CLICKS ===== */
+//   const rawButtonClicks = await Event.aggregate([
+//     {
+//       $match: {
+//         type: "button_click",
+//         page: page._id,
+//         createdAt: { $gte: startDate, $lte: endDate },
+//       },
+//     },
+//     {
+//       $group: {
+//         _id: "$target",
+//         count: { $sum: 1 },
+//       },
+//     },
+//   ]);
+
+//   const buttonClickList = rawButtonClicks.map((b) => ({
+//     key: b._id,
+//     clicks: b.count,
+//   }));
+
+//   /* ===== MAIN CHART DATA ===== */
+//   const analyticsData = [];
+//   for (let i = 0; i < DAYS; i++) {
+//     const date = formatISO9075(addDays(startDate, i)).split(" ")[0];
+//     analyticsData.push({
+//       date,
+//       views: viewMap[date] || 0,
+//       clicks: clickMap[date] || 0,
+//     });
+//   }
+
+//   /* ===== LINKS ===== */
+//   const linkBlocks = (page.blocks || []).filter(
+//     (b) => b.type === "link" && b.data?.links,
+//   );
+//   const links = linkBlocks.flatMap((b) => b.data.links);
+
+//   /* ===== CLICKS BY LINK (THEO NGÀY) ===== */
+//   const rawLinkClicks = await Event.aggregate([
+//     {
+//       $match: {
+//         type: "link_click",
+//         page: page._id,
+//       },
+//     },
+//     {
+//       $group: {
+//         _id: {
+//           target: "$target",
+//           day: {
+//             $dateToString: {
+//               date: "$createdAt",
+//               format: "%Y-%m-%d",
+//             },
+//           },
+//         },
+//         count: { $sum: 1 },
+//       },
+//     },
+//   ]);
+
+//   const linkClickMap = {};
+//   rawLinkClicks.forEach((c) => {
+//     if (!linkClickMap[c._id.target]) {
+//       linkClickMap[c._id.target] = {};
+//     }
+//     linkClickMap[c._id.target][c._id.day] = c.count;
+//   });
+
+//   return (
+//     <AnalyticsClient
+//       analyticsData={analyticsData}
+//       links={links}
+//       linkClickMap={linkClickMap}
+//       days={DAYS}
+//     />
+//   );
+// }

@@ -1,9 +1,20 @@
-import {model, models, Schema} from "mongoose";
+import mongoose from "mongoose";
 
-const EventSchema = new Schema({
-  type: String, // click or view
-  page: String, // for example "dawid"
-  uri: String, // /dawid | https://
-}, {timestamps: true});
+const EventSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["page_view", "link_click", "button_click"],
+      required: true,
+    },
+    page: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Page",
+    },
+    uri: String,
+    target: String, // url link OR button url
+  },
+  { timestamps: true },
+);
 
-export const Event = models?.Event || model('Event', EventSchema);
+export default mongoose.models.Event || mongoose.model("Event", EventSchema);
